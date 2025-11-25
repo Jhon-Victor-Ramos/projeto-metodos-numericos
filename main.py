@@ -1,3 +1,7 @@
+import matplotlib
+# Mantendo o modo 'Agg' para evitar erros no Linux
+matplotlib.use('Agg') 
+
 import yfinance as yf
 import sys
 import pandas as pd
@@ -5,43 +9,42 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Importando os módulos da pasta Métodos
-from Métodos.diferencasDivididas import interpoladorDiferencasDivididas
-# Certifique-se de que o arquivo quadratica_sistemas.py existe na pasta Métodos
-from Métodos.quadratica import interpolacaoQuadratica
+from Metodos.diferencasDivididas import interpoladorDiferencasDivididas
+from Metodos.quadratica import interpolacaoQuadratica
 
 def main():
-    print("--- Sistema de Interpolação de Preços (Intraday) ---")
-    print("Data Fixa: 19/11/2025\n")
-
-    # --- Menu de Escolha de Ações ---
+    print("\nInterpolação de Preços de Ações no dia 19/11/2025\n")
+    
     acoes = {
-        '1': 'PETR4.SA', '2': 'VALE3.SA', '3': 'ITUB4.SA', 
-        '4': 'BBDC4.SA', '5': 'BBAS3.SA'
+        '1': 'PETR4.SA',
+        '2': 'VALE3.SA', 
+        '3': 'ITUB4.SA', 
+        '4': 'BBDC4.SA',
+        '5': 'BBAS3.SA'
     }
 
-    print("Escolha uma ação para análise:")
     for k, v in acoes.items():
         print(f"{k} - {v}")
     
-    escolha_acao = input("Opção: ")
+    escolha_acao = input("Escolha uma ação: ")
     ticker = acoes.get(escolha_acao)
 
     if not ticker:
-        print("Opção inválida. Encerrando.")
+        print("Opção inválida.")
         return
 
-    # 1. Obtenção da Fonte Geral
-    print(f"\nBaixando dados de {ticker} com intervalo de 5 minutos...")
+    # Obtendo os dados da ação selecionada de 5 em 5 minutos
+    print(f"Baixando dados de {ticker}...")
     dados_gerais = yf.download(ticker, start="2025-11-19", end="2025-11-20", interval="5m", progress=False)
 
     if dados_gerais.empty:
-        print("Erro: Não foi possível baixar os dados.")
+        print("Não foi possível baixar os dados")
         return
 
     # Conversão de Fuso e Filtros
     dados_gerais.index = dados_gerais.index.tz_convert('America/Sao_Paulo')
     
-    # Filtro para pegar das 10h até as 16h (inclusive)
+    # Filtro para pegar das 10h até as 16h
     mask_horario = (
         (dados_gerais.index.hour >= 10) & 
         (
@@ -51,119 +54,83 @@ def main():
     )
     dados_gerais = dados_gerais[mask_horario]
 
-    # 2. Dados de Interpolação (Todas as Horas Cheias disponíveis)
+    # Dados de Interpolação (Todas as Horas Cheias disponíveis)
     dados_interpolacao = dados_gerais[dados_gerais.index.minute == 0]
 
     x_treino = dados_interpolacao.index.hour.tolist()
     y_treino = dados_interpolacao['Close'].values.flatten().tolist()
 
-    print(f"\nPontos de Interpolação coletados (Horas Cheias):")
+    print(f"\nPontos de Interpolação:")
     for h, p in zip(x_treino, y_treino):
-        print(f"Hora: {h}h -> Preço: R$ {p:.2f}")
+        print(f"{h}h - R$ {p:.2f}")
 
-    # 3. Interação com o Usuário
-    print("\n--- Entrada de Dados ---")
+    # Interação com o Usuário
     try:
-        x_alvo_str = input("Digite o horário alvo (ex: 12.5 para 12h30min) [entre 10 e 16]: ")
-        x_alvo = float(x_alvo_str)
-        
+        x_alvo = float(input("\nDigite o horário alvo: "))
         if not (10 <= x_alvo <= 16):
-            print("Erro: O horário deve estar entre 10 e 16.")
+            print("O horário deve estar entre 10 e 16")
             return
-            
-        print("\nEscolha o método de interpolação:")
-        print("1 - Newton (Diferenças Divididas - Usa todos os pontos)")
-        print("2 - Quadrática (Sistema Linear - Usa FIXOS: 10h, 13h, 16h)")
-        opcao_metodo = input("Opção: ")
+    except ValueError:
+        print("Valor inválido.")
+        return
+        
+    print("\n1 - Newton")
+    print("2 - Quadrática")
+    print("3 - Ambos os métodos")
+    opcao_metodo = input("Escolha o método de interpolação: ")
 
+    # Variáveis comuns
+    hora_exibicao = int(x_alvo)
+    minuto_exibicao = int((x_alvo - hora_exibicao) * 60)
+    
+    # Prepara dados para o gráfico (Reais)
+    x_gerais_plot = dados_gerais.index.hour + dados_gerais.index.minute / 60.0
+    y_gerais_plot = dados_gerais['Close'].values.flatten()
+
+    if opcao_metodo in ['1', '2']:
         resultado = 0.0
         metodo_nome = ""
-        
-        # Variáveis para armazenar contexto do plot
         x_usados_calc = [] 
         y_usados_calc = []
         func_plot = None
 
         if opcao_metodo == '1':
             metodo_nome = "Newton"
-            # Newton usa TODOS os pontos disponíveis
             x_usados_calc = x_treino
             y_usados_calc = y_treino
             resultado = interpoladorDiferencasDivididas(x_treino, y_treino, x_alvo)
-            
             func_plot = lambda x: interpoladorDiferencasDivididas(x_treino, y_treino, x)
 
         elif opcao_metodo == '2':
-            metodo_nome = "Quadrática (10h, 13h, 16h)"
-            
-            # --- LÓGICA ALTERADA AQUI ---
-            # Seleciona apenas os dados correspondentes a 10, 13 e 16
+            metodo_nome = "Quadrática"
             horas_fixas = [10, 13, 16]
-            
-            # Filtra as listas x_treino e y_treino baseada nas horas fixas
             x_usados_calc = []
             y_usados_calc = []
             
             for h_fixa in horas_fixas:
-                try:
-                    # Encontra o índice onde a hora é igual a h_fixa
-                    idx = x_treino.index(h_fixa)
-                    x_usados_calc.append(x_treino[idx])
-                    y_usados_calc.append(y_treino[idx])
-                except ValueError:
-                    print(f"Aviso: Dados para a hora {h_fixa}h não encontrados.")
+                idx = x_treino.index(h_fixa)
+                x_usados_calc.append(x_treino[idx])
+                y_usados_calc.append(y_treino[idx])
             
-            if len(x_usados_calc) != 3:
-                print("Erro: Não foram encontrados os 3 pontos fixos (10, 13, 16) na base de dados.")
-                return
-
-            print(f"Pontos selecionados para o sistema: {x_usados_calc}")
-            
-            resultado = interpolacaoQuadratica(x_usados_calc, y_usados_calc, x_alvo)
-            
-            # Função lambda usa apenas os 3 pontos fixos para desenhar a parábola
+            resultado = interpolacaoQuadratica(x_usados_calc, y_usados_calc, x_alvo)            
             func_plot = lambda x: interpolacaoQuadratica(x_usados_calc, y_usados_calc, x)
-            
-        else:
-            print("Opção inválida.")
-            return
 
-        # 5. Exibição do Resultado
-        hora_exibicao = int(x_alvo)
-        minuto_exibicao = int((x_alvo - hora_exibicao) * 60)
-        
-        print("-" * 30)
-        print(f"Preço Estimado ({metodo_nome}) às {hora_exibicao}:{minuto_exibicao:02d}h: R$ {resultado:.4f}")
-        print("-" * 30)
+        # Exibição Resultado (1 e 2)
+        print("\nResultado da Interpolação pelo método", metodo_nome)
+        print(f"O valor interpolado às {hora_exibicao}:{minuto_exibicao:02d}h foi R$ {resultado:.4f}")
 
-        # 6. PLOTAGEM DOS GRÁFICOS
-        print("\nGerando gráfico...")
-
-        # A) Dados Reais
-        x_gerais_plot = dados_gerais.index.hour + dados_gerais.index.minute / 60.0
-        y_gerais_plot = dados_gerais['Close'].values.flatten()
-
-        # B) Curva Interpolada
         x_curva = np.linspace(10, 16, 200)
         y_curva = [func_plot(val) for val in x_curva]
 
         plt.figure(figsize=(12, 7))
-        
-        # 1. Linha Preta: Dados Reais
-        plt.plot(x_gerais_plot, y_gerais_plot, color='black', linewidth=1.5, label='Dados Reais (5 min)', zorder=2)
-        
-        # 2. Linha Azul: Polinômio Interpolador
-        plt.plot(x_curva, y_curva, color='blue', linewidth=2, label=f'Polinômio ({metodo_nome})', zorder=3)
-        
-        # 3. Pontos Vermelhos: Todas as horas cheias disponíveis (para mostrar o contexto)
-        plt.scatter(x_treino, y_treino, color='red', s=50, label='Horas Cheias (Disponíveis)', zorder=4)
+        plt.plot(x_gerais_plot, y_gerais_plot, color='black', linewidth=1.5, label='Dados Reais', zorder=2)
+        plt.plot(x_curva, y_curva, color='red', linewidth=2, label=f'Polinômio {metodo_nome}', zorder=3)
+        plt.scatter(x_treino, y_treino, color='red', s=50, label='Horas Cheias', zorder=4)
 
-        # 4. Destaque Laranja: Pontos efetivamente usados no cálculo
         if opcao_metodo == '2':
-             plt.scatter(x_usados_calc, y_usados_calc, color='orange', s=120, marker='o', facecolors='none', edgecolors='orange', linewidth=2, label='Pontos Fixos (10h, 13h, 16h)', zorder=5)
+            plt.scatter(x_usados_calc, y_usados_calc, color='red', s=120, marker='o', facecolors='none', linewidth=2, label='Pontos Fixos', zorder=5)
         
-        # 5. Estrela Verde: O alvo
-        plt.scatter([x_alvo], [resultado], color='green', marker='*', s=250, label=f'Alvo ({hora_exibicao}:{minuto_exibicao:02d})', zorder=6)
+        plt.scatter([x_alvo], [resultado], color='blue', marker='*', s=250, label=f'Alvo', zorder=6)
 
         plt.title(f"Interpolação {metodo_nome} - {ticker} (19/11/2025)", fontsize=14)
         plt.xlabel("Hora do Dia")
@@ -172,10 +139,66 @@ def main():
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.xticks(range(10, 17)) 
         
-        plt.show()
+        nome_arquivo = f"grafico_{ticker}_{metodo_nome}.png"
+        plt.savefig(nome_arquivo, dpi=300)
+        print(f"\nO gráfico foi salvo como '{nome_arquivo}' na pasta do projeto")
 
-    except ValueError:
-        print("Erro: Digite um número válido.")
+    elif opcao_metodo == '3':       
+        # 1. Dados para Quadrática
+        horas_fixas = [10, 13, 16]
+        x_quad = []
+        y_quad = []
+        for h in horas_fixas:
+                idx = x_treino.index(h)
+                x_quad.append(x_treino[idx])
+                y_quad.append(y_treino[idx])
+
+        # 2. Cálculos
+        res_newton = interpoladorDiferencasDivididas(x_treino, y_treino, x_alvo)
+        res_quad = interpolacaoQuadratica(x_quad, y_quad, x_alvo)
+
+        print(f"\nEstimativa para {hora_exibicao}:{minuto_exibicao:02d}h:")
+        print(f"Newton: R$ {res_newton:.4f}")
+        print(f"Quadrática: R$ {res_quad:.4f}")
+
+        # 3. Preparando curvas
+        x_curva = np.linspace(10, 16, 200)
+        y_curve_newton = [interpoladorDiferencasDivididas(x_treino, y_treino, val) for val in x_curva]
+        y_curve_quad = [interpolacaoQuadratica(x_quad, y_quad, val) for val in x_curva]
+
+        # 4. Plotagem Comparativa (Preto, Azul, Vermelho)
+        plt.figure(figsize=(12, 7))
+
+        # Real (Preto)
+        plt.plot(x_gerais_plot, y_gerais_plot, color='black', linewidth=1.5, label='Dados Reais (5min)', zorder=1)
+        
+        # Newton (Azul)
+        plt.plot(x_curva, y_curve_newton, color='blue', linewidth=2, linestyle='-', label='Newton', zorder=2)
+        
+        # Quadrática (Vermelho)
+        plt.plot(x_curva, y_curve_quad, color='red', linewidth=2, linestyle='-', label='Quadrática', zorder=3)
+
+        # Pontos
+        plt.scatter(x_treino, y_treino, color='blue', s=40, label='Pontos Newton', zorder=4)
+        plt.scatter(x_quad, y_quad, color='red', s=100, marker='o', label='Pontos Quadrática', zorder=5)
+
+        # Alvos
+        plt.scatter([x_alvo], [res_newton], color='blue', marker='*', s=150, zorder=6)
+        plt.scatter([x_alvo], [res_quad], color='red', marker='*', s=150, zorder=6)
+
+        plt.title(f"Comparativo: Newton vs Quadrática - {ticker}", fontsize=14)
+        plt.xlabel("Hora do Dia")
+        plt.ylabel("Preço (R$)")
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.xticks(range(10, 17))
+        
+        nome_arquivo = f"grafico_{ticker}_comparativo.png"
+        plt.savefig(nome_arquivo, dpi=300)
+        print(f"\nO gráfico comparativo foi salvo como '{nome_arquivo}' na pasta do projeto")
+
+    else:
+        print("Opção inválida")
 
 if __name__ == "__main__":
     main()
