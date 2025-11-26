@@ -14,7 +14,7 @@ O Sistema Interpolador de Preços foi desenvolvido como projeto final da discipl
 O algoritmo usa o dia 19/11/2025 como data fixa, é possível escolher que ação vai ser interpolada entre as empresas Petrobras, Vale, Itau, Bradesco e Banco do Brasil. Os preços da ação escolhida são obtidos das 10h às 16h com intervalo de 1 hora através da biblioteca yfinance do python. O usuário deve informar a hora exata que deseja saber o valor da ação (por exemplo às 10.7 ou às 15.43) e em seguida informar qual método deve ser utilizado, após isso o algoritmo retorna o valor estimado da ação naquele horário e o gráfico que compara os valores reais com o valor obtido através da interpolação.
 
 <img width="3600" height="2100" alt="image" src="https://github.com/user-attachments/assets/f209f112-33ee-4070-85a2-1672771de7ef" />
-<img width="1405" height="821" alt="image" src="https://github.com/user-attachments/assets/9a7c95ad-a6af-4bba-a6bf-a0de18afe93e" />
+<img width="3600" height="2100" alt="image" src="https://github.com/user-attachments/assets/cdff1000-fd14-47f2-b67f-14eac84ce9c2" />
 
 # Contextualização
 
